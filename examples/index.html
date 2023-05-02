@@ -11,15 +11,9 @@
     <H2>Hello, World</H2>
     <script>
         async function main() {
-            let resp = await fetch("https://127.0.0.1:4433/test", { mode: "no-cors" });
+            let resp = await fetch("https://127.0.0.1:4433/test");
             let data = await resp.text();
-
-            // let reader = resp.body.getReader();
-            // data = await reader.read();
-            // console.log(data);
-            // data = await reader.read();
-
-            console.log(data);
+            console.log("Data:", data);
         }
         main().catch(console.log)
     </script>

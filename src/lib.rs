@@ -11,5 +11,16 @@ pub use request::*;
 pub use response::*;
 pub use server::*;
 
+use bytes::Bytes;
+use std::{
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
+};
+
 type DynErr = Box<dyn std::error::Error + Send + Sync>;
 pub type Result<T, E = h2::Error> = std::result::Result<T, E>;
+
+fn io_err(error: impl Into<DynErr>) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::Other, error)
+}

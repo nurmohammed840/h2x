@@ -1,7 +1,5 @@
 use super::*;
-use bytes::Bytes;
 use h2::server::SendResponse;
-use std::future::poll_fn;
 
 const EMPTY_DATA: Bytes = Bytes::new();
 
@@ -39,9 +37,7 @@ impl Response {
 
     #[inline]
     pub async fn write(self, data: impl Into<Bytes>) -> Result<()> {
-        let mut sender = self.send_stream()?;
-        sender.write(data).await?;
-        sender.end()
+        self.send_stream()?.end_write(data).await
     }
 }
 
@@ -50,21 +46,29 @@ pub struct Sender {
 }
 
 impl Sender {
-    #[inline]
-    pub async fn write(&mut self, data: impl Into<Bytes>) -> Result<()> {
-        let mut bytes: Bytes = data.into();
-        while !bytes.is_empty() {
+    async fn _write(&mut self, mut bytes: Bytes, end: bool) -> Result<()> {
+        loop {
             let len = bytes.len();
             self.inner.reserve_capacity(len);
-            match poll_fn(|cx| self.inner.poll_capacity(cx)).await {
+            match std::future::poll_fn(|cx| self.inner.poll_capacity(cx)).await {
                 None => return Err(h2::Error::from(h2::Reason::CANCEL)),
                 Some(nbytes) => {
-                    let data = bytes.split_to(nbytes?.min(len));
-                    self.inner.send_data(data, false)?;
+                    let nbytes = nbytes?;
+                    if len <= nbytes {
+                        return self.inner.send_data(bytes, end);
+                    }
+                    self.inner.send_data(bytes.split_to(nbytes), false)?;
                 }
-            }
+            };
         }
-        Ok(())
+    }
+
+    pub async fn write(&mut self, data: impl Into<Bytes>) -> Result<()> {
+        self._write(data.into(), false).await
+    }
+
+    pub async fn end_write(mut self, bytes: impl Into<Bytes>) -> Result<()> {
+        self._write(bytes.into(), true).await
     }
 
     #[inline]

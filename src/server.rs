@@ -1,5 +1,4 @@
 use super::*;
-use bytes::Bytes;
 use std::{net::SocketAddr, path::Path, sync::Arc};
 use tokio::{
     io::{self, AsyncRead, AsyncWrite},
@@ -50,20 +49,35 @@ where
     }
 
     #[inline]
-    pub async fn accept(&mut self) -> Option<Result<(Request, Response)>> {
-        Some(self.0.accept().await?.map(|(req, sender)| {
-            let (head, body) = req.into_parts();
-            let request = Request { head, body };
-            let response = Response {
-                status: http::StatusCode::default(),
-                headers: http::HeaderMap::default(),
-                sender,
-            };
-            (request, response)
-        }))
+    pub fn accept(&mut self) -> Accept<IO> {
+        Accept { conn: &mut self.0 }
     }
 }
 
-fn io_err(error: impl Into<DynErr>) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, error)
+pub struct Accept<'a, IO> {
+    pub conn: &'a mut h2::server::Connection<IO, Bytes>,
+}
+
+impl<IO> Future for Accept<'_, IO>
+where
+    IO: Unpin + AsyncRead + AsyncWrite,
+{
+    type Output = Option<Result<(Request, Response)>>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.conn.poll_accept(cx).map(|event| {
+            event.map(|accept| {
+                accept.map(|(req, sender)| {
+                    let (head, body) = req.into_parts();
+                    let request = Request { head, body };
+                    let response = Response {
+                        status: http::StatusCode::default(),
+                        headers: http::HeaderMap::default(),
+                        sender,
+                    };
+                    (request, response)
+                })
+            })
+        })
+    }
 }
