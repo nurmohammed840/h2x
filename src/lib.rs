@@ -1,3 +1,6 @@
+// #![warn(missing_docs)]
+#![doc = include_str!("../README.md")]
+
 pub use bytes;
 pub use h2;
 pub use http;

@@ -63,12 +63,20 @@ impl Sender {
         }
     }
 
-    pub async fn write(&mut self, data: impl Into<Bytes>) -> Result<()> {
-        self._write(data.into(), false).await
+    pub async fn write(&mut self, bytes: impl Into<Bytes>) -> Result<()> {
+        self._write(bytes.into(), false).await
+    }
+
+    pub fn write_unbound(&mut self, bytes: impl Into<Bytes>) -> Result<()> {
+        self.inner.send_data(bytes.into(), false)
     }
 
     pub async fn end_write(mut self, bytes: impl Into<Bytes>) -> Result<()> {
         self._write(bytes.into(), true).await
+    }
+
+    pub fn end_write_unbound(mut self, bytes: impl Into<Bytes>) -> Result<()> {
+        self.inner.send_data(bytes.into(), true)
     }
 
     #[inline]

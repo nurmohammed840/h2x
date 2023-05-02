@@ -9,13 +9,14 @@
 
 <body>
     <H2>Hello, World</H2>
+    <button onclick="main().catch(console.error)">Send /test request</button>
+    <div id="testBody"></div>
     <script>
         async function main() {
             let resp = await fetch("https://127.0.0.1:4433/test");
             let data = await resp.text();
-            console.log("Data:", data);
+            document.getElementById("testBody").innerText = data;
         }
-        main().catch(console.log)
     </script>
 </body>
 

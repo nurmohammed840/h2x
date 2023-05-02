@@ -1,7 +1,7 @@
 use h2_plus::{
     http::{Method, StatusCode},
     tokio_tls_listener::tokio_rustls::server::TlsStream,
-    Conn, Server,
+    Conn, Request, Response, Server,
 };
 use http::HeaderValue;
 use tokio::net::TcpStream;
@@ -21,36 +21,38 @@ async fn main() {
 
     loop {
         let Ok((conn, _addr)) = server.accept().await else { continue };
-        tokio::spawn(route(conn));
+        tokio::spawn(acceptor(conn));
     }
 }
 
-async fn route(mut conn: Conn<TlsStream<TcpStream>>) {
-    while let Some(Ok((req, mut res))) = conn.accept().await {
-        tokio::spawn(async move {
-            let method = req.method.clone();
-            let path = req.uri.path();
-            println!("{method} {path}");
+async fn acceptor(mut conn: Conn<TlsStream<TcpStream>>) {
+    while let Some(Ok((req, res))) = conn.accept().await {
+        tokio::spawn(handler(req, res));
+    }
+}
 
-            match (method, path) {
-                (Method::GET, "/") => {}
-                (Method::GET, "/test") => {
-                    let body = "Hello, World!\n".repeat(10);
-                    res.status = StatusCode::OK;
-                    res.headers
-                        .append("access-control-allow-origin", HeaderValue::from_static("*"));
-                    res.headers
-                        .append("content-type", HeaderValue::from_static("text/plain"));
-                    res.headers
-                        .append("content-length", HeaderValue::from(body.len()));
+async fn handler(req: Request, mut res: Response) -> h2_plus::Result<()> {
+    res.headers
+        .append("access-control-allow-origin", HeaderValue::from_static("*"));
+    res.headers
+        .append("content-type", HeaderValue::from_static("text/html"));
 
-                    let _ = res.write(body).await;
-                }
-                _ => {
-                    res.status = StatusCode::NOT_FOUND;
-                    let _ = res.send_headers();
-                }
-            }
-        });
+    match (req.method.clone(), req.uri.path()) {
+        (Method::GET, "/") => {
+            let data = std::fs::read_to_string("./examples/index.html").unwrap();
+            res.write(data).await
+        }
+        (Method::GET, "/test") => {
+            let body = "Hello, World!\n".repeat(10);
+
+            res.headers
+                .append("content-length", HeaderValue::from(body.len()));
+
+            res.write(body).await
+        }
+        (method, path) => {
+            res.status = StatusCode::NOT_FOUND;
+            res.write(format!("{method} {path}")).await
+        }
     }
 }
