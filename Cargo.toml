@@ -1,0 +1,14 @@
+[package]
+name = "h2-plus"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytes = "1"
+h2 = "0.3"
+http = "0.2"
+tokio = { version = "1", features = ["io-util"] }
+tokio-tls-listener = { git = "https://github.com/nurmohammed840/tokio-tls-listener" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

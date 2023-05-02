@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <H2>Hello, World</H2>
+    <script>
+        async function main() {
+            let resp = await fetch("https://127.0.0.1:4433/test", { mode: "no-cors" });
+            let data = await resp.text();
+
+            // let reader = resp.body.getReader();
+            // data = await reader.read();
+            // console.log(data);
+            // data = await reader.read();
+
+            console.log(data);
+        }
+        main().catch(console.log)
+    </script>
+</body>
+
+</html>
