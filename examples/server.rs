@@ -5,10 +5,17 @@ use h2_plus::{
 };
 use http::{HeaderName, HeaderValue};
 use tokio::net::TcpStream;
+use tracing::info;
 
 #[tokio::main]
 async fn main() {
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .finish();
+
     // std::env::set_var("SSLKEYLOGFILE", "./SSLKEYLOGFILE.log");
+    tracing::subscriber::set_global_default(subscriber).unwrap();
+
     let mut server = Server::bind(
         "127.0.0.1:4433",
         "./examples/cert.pem",
@@ -17,7 +24,7 @@ async fn main() {
     .await
     .unwrap();
 
-    println!("listening: {:?}", server.listener.local_addr());
+    info!("listening: {:?}", server.listener.local_addr());
 
     loop {
         let Ok((conn, _addr)) = server.accept().await else { continue };
@@ -27,12 +34,12 @@ async fn main() {
 
 async fn route(mut conn: Conn<TlsStream<TcpStream>>) {
     while let Some(Ok((req, mut res))) = conn.accept().await {
-        println!("{:?}", req.uri.path());
+        info!("{:?}", req.uri.path());
 
         match (req.method.clone(), req.uri.path()) {
             (Method::GET, "/") => {}
             (Method::GET, "/test") => {
-                let body = "Hello, World\n".repeat(1024 * 100);
+                let body = vec![0; 409601];
 
                 res.status = StatusCode::OK;
                 res.headers.append(
@@ -43,7 +50,7 @@ async fn route(mut conn: Conn<TlsStream<TcpStream>>) {
                 //     HeaderName::from_static("content-length"),
                 //     HeaderValue::from(body.len()),
                 // );
-                println!("{:?}", res.write(body).await);
+                info!("{:?}", res.write(body).await);
             }
             _ => {
                 res.status = StatusCode::OK;

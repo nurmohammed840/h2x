@@ -69,7 +69,6 @@ impl Sender {
 
     #[inline]
     pub fn end(mut self) -> Result<()> {
-        self.inner.send_data(EMPTY_DATA, true)?;
-        Ok(())
+        self.inner.send_data(EMPTY_DATA, true)
     }
 }
