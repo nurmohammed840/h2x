@@ -1,13 +1,12 @@
 use super::*;
 use h2::server::SendResponse;
 
-const EMPTY_DATA: Bytes = Bytes::new();
-
 #[derive(Debug)]
 pub struct Response {
     pub status: http::StatusCode,
     pub headers: http::HeaderMap,
-    pub(crate) sender: SendResponse<Bytes>,
+    #[doc(hidden)]
+    pub sender: SendResponse<Bytes>,
 }
 
 impl Response {
@@ -46,7 +45,8 @@ pub struct Sender {
 }
 
 impl Sender {
-    async fn _write(&mut self, mut bytes: Bytes, end: bool) -> Result<()> {
+    #[doc(hidden)]
+    pub async fn write_bytes(&mut self, mut bytes: Bytes, end: bool) -> Result<()> {
         loop {
             let len = bytes.len();
             self.inner.reserve_capacity(len);
@@ -64,7 +64,7 @@ impl Sender {
     }
 
     pub async fn write(&mut self, bytes: impl Into<Bytes>) -> Result<()> {
-        self._write(bytes.into(), false).await
+        self.write_bytes(bytes.into(), false).await
     }
 
     pub fn write_unbound(&mut self, bytes: impl Into<Bytes>) -> Result<()> {
@@ -72,7 +72,7 @@ impl Sender {
     }
 
     pub async fn end_write(mut self, bytes: impl Into<Bytes>) -> Result<()> {
-        self._write(bytes.into(), true).await
+        self.write_bytes(bytes.into(), true).await
     }
 
     pub fn end_write_unbound(mut self, bytes: impl Into<Bytes>) -> Result<()> {
@@ -81,6 +81,6 @@ impl Sender {
 
     #[inline]
     pub fn end(mut self) -> Result<()> {
-        self.inner.send_data(EMPTY_DATA, true)
+        self.inner.send_data(Bytes::new(), true)
     }
 }
