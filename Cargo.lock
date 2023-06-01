@@ -356,7 +356,8 @@ dependencies = [
 [[package]]
 name = "tokio-tls-listener"
 version = "0.1.0"
-source = "git+https://github.com/nurmohammed840/tokio-tls-listener#aff4f6d22deba06d4880acab6256129540923d20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb7df5f7cb01accda831d275098849363be917086b8d711c80d9a9dda736ba00"
 dependencies = [
  "rustls-pemfile",
  "tokio",
