@@ -1,6 +1,7 @@
 use super::*;
 use h2::RecvStream;
 
+/// Represents an HTTP request object. It consists of the request headers and body.
 #[derive(Debug)]
 pub struct Request {
     pub(crate) head: http::request::Parts,
@@ -8,9 +9,9 @@ pub struct Request {
 }
 
 impl Request {
-    #[inline]
-    pub fn data(&mut self) -> Data {
-        Data(self)
+    /// Retrieve the next chunk of data from the request body.
+    pub async fn data(&mut self) -> Option<Result<bytes::Bytes>> {
+        poll_fn(|cx| self.poll_data(cx)).await
     }
 
     #[doc(hidden)]
@@ -24,16 +25,26 @@ impl Request {
         })
     }
 
+    /// Returns the stream ID of this stream.
+    ///
+    /// # Panics
+    ///
+    /// If the lock on the stream store has been poisoned.
     #[inline]
     pub fn stream_id(&self) -> h2::StreamId {
         self.body.stream_id()
     }
 
+    /// Returns true if the receive half has reached the end of stream.
+    ///
+    /// A return value of `true` means that calls to `poll` and `poll_trailers`
+    /// will both return `None`.
     #[inline]
     pub fn is_end_stream(&self) -> bool {
         self.body.is_end_stream()
     }
 
+    /// Get optional trailers for this stream.
     #[inline]
     pub fn trailers(&mut self) -> impl Future<Output = Result<Option<http::HeaderMap>>> + '_ {
         self.body.trailers()
@@ -53,14 +64,5 @@ impl std::ops::DerefMut for Request {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.head
-    }
-}
-
-pub struct Data<'a>(&'a mut Request);
-
-impl Future for Data<'_> {
-    type Output = Option<Result<bytes::Bytes>>;
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.0.poll_data(cx)
     }
 }

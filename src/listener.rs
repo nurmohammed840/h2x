@@ -6,9 +6,15 @@ use tokio::{
 };
 use tokio_tls_listener::{tls_config, tokio_rustls::server::TlsStream, TlsListener};
 
-pub struct Listener(#[doc(hidden)] pub TlsListener);
+/// It is used to accept incoming HTTP/2 connections.
+pub struct Listener(
+    /// The underlying [TlsListener] instance that provides secure transport layer functionality
+    #[doc(hidden)]
+    pub TlsListener,
+);
 
 impl Listener {
+    /// Bind and listen for incoming connections on the specified address.
     pub async fn bind(
         addr: impl ToSocketAddrs,
         certs: &mut dyn BufRead,
@@ -22,6 +28,7 @@ impl Listener {
         Ok(Self(TlsListener::bind(addr, conf).await?))
     }
 
+    /// Accept incoming connections
     #[inline]
     pub async fn accept(&mut self) -> io::Result<(Conn<TlsStream<TcpStream>>, SocketAddr)> {
         let (stream, addr) = self.0.accept_tls().await?;
@@ -39,6 +46,7 @@ impl ops::Deref for Listener {
     }
 }
 
+/// Represents an HTTP/2 connection.
 #[derive(Debug)]
 pub struct Conn<IO>(#[doc(hidden)] pub h2::server::Connection<IO, Bytes>);
 
@@ -46,14 +54,15 @@ impl<IO> Conn<IO>
 where
     IO: Unpin + AsyncRead + AsyncWrite,
 {
+    /// Creates a new configured HTTP/2 server with default configuration.
     #[inline]
     pub async fn handshake(io: IO) -> Result<Conn<IO>> {
         h2::server::handshake(io).await.map(Self)
     }
 
-    #[inline]
-    pub fn accept(&mut self) -> Accept<IO> {
-        Accept { this: self }
+    /// Accept a new incoming stream on the HTTP/2 connection
+    pub async fn accept(&mut self) -> Option<Result<(Request, Response)>> {
+        poll_fn(|cx| self.poll_accept(cx)).await
     }
 
     #[doc(hidden)]
@@ -90,19 +99,5 @@ impl<IO> ops::DerefMut for Conn<IO> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
-    }
-}
-
-pub struct Accept<'a, IO> {
-    this: &'a mut Conn<IO>,
-}
-
-impl<IO> Future for Accept<'_, IO>
-where
-    IO: Unpin + AsyncRead + AsyncWrite,
-{
-    type Output = Option<Result<(Request, Response)>>;
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.this.poll_accept(cx)
     }
 }

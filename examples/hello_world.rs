@@ -1,23 +1,3 @@
-## h2x
-
-`h2x` is a Rust library that provides a wrapper around the h2 crate, offering additional functionality and utility functions for working with the HTTP/2 protocol.
-
-It aims to simplify the usage of the h2 crate and provide a more ergonomic API for building HTTP/2 servers.
-
-## Getting Started
-
-To use `h2x` in your Rust project, add it as a dependency in your `Cargo.toml` file:
-
-```toml
-[dependencies]
-h2x = "0.1"
-```
-
-### Example 
-
-You can run this example with: `cargo run --example hello_world`
-
-```rust no_run
 use h2x::*;
 use http::{Method, StatusCode};
 use std::{fs, io::Result, ops::ControlFlow};
@@ -55,4 +35,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-```

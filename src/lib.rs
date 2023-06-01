@@ -1,4 +1,4 @@
-// #![warn(missing_docs)]
+#![warn(missing_docs)]
 #![doc = include_str!("../README.md")]
 
 pub use bytes;
@@ -18,12 +18,16 @@ pub use server::*;
 
 use bytes::Bytes;
 use std::{
-    future::Future,
-    pin::Pin,
+    future::{poll_fn, Future},
     task::{Context, Poll},
 };
 
 type DynErr = Box<dyn std::error::Error + Send + Sync>;
+
+/// Represents HTTP/2 result operation.
+///
+/// This type uses the [h2::Error] as the error type.
+/// This allows functions returning this Result type to propagate errors specific to the [h2] library.
 pub type Result<T, E = h2::Error> = std::result::Result<T, E>;
 
 fn io_err(error: impl Into<DynErr>) -> std::io::Error {

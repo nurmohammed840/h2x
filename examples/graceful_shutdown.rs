@@ -29,6 +29,7 @@ async fn main() -> Result<()> {
             |addr| {
                 let id = COUNTER.fetch_add(1, Ordering::Relaxed);
                 if id == 1 {
+                    // Shutting down the server on the second connection.
                     return ControlFlow::Break(());
                 }
                 println!("Connection ID {id}: {:?}", addr);
