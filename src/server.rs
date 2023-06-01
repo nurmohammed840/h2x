@@ -1,5 +1,4 @@
 use super::*;
-use h2::server::Connection;
 use std::{
     io::BufRead,
     net::SocketAddr,
@@ -39,12 +38,7 @@ impl Server {
     pub async fn serve_with_graceful_shutdown<State, Stream>(
         mut self,
         on_accept: impl FnOnce(SocketAddr) -> ControlFlow<(), Option<State>> + Clone + 'static,
-        on_stream: fn(
-            &mut Connection<TlsStream<TcpStream>, Bytes>,
-            State,
-            Request,
-            Response,
-        ) -> Stream,
+        on_stream: fn(&mut Conn<TlsStream<TcpStream>>, State, Request, Response) -> Stream,
     ) -> impl Future<Output = ()>
     where
         State: Clone + Send + 'static,
@@ -69,7 +63,7 @@ impl Server {
                     } else {
                         let wg = Arc::clone(&wg);
                         let state = state.clone();
-                        let future = on_stream(&mut conn.0, state, req, res);
+                        let future = on_stream(&mut conn, state, req, res);
                         tokio::spawn(async move {
                             let _ = future.await;
                             drop(wg);
@@ -109,12 +103,7 @@ impl Server {
     pub async fn serve<State, Stream>(
         mut self,
         on_accept: impl FnOnce(SocketAddr) -> ControlFlow<(), Option<State>> + Clone + 'static,
-        on_stream: fn(
-            &mut Connection<TlsStream<TcpStream>, Bytes>,
-            State,
-            Request,
-            Response,
-        ) -> Stream,
+        on_stream: fn(&mut Conn<TlsStream<TcpStream>>, State, Request, Response) -> Stream,
     ) where
         State: Clone + Send + 'static,
         Stream: Future + Send + 'static,
@@ -133,7 +122,7 @@ impl Server {
             tokio::spawn(async move {
                 while let Some(Ok((req, res))) = conn.accept().await {
                     let state = state.clone();
-                    tokio::spawn(on_stream(&mut conn.0, state, req, res));
+                    tokio::spawn(on_stream(&mut conn, state, req, res));
                 }
             });
         }

@@ -15,7 +15,7 @@ exclude = ["/examples", ".*"]
 bytes = "1"
 h2 = "0.3"
 http = "0.2"
-tokio = { version = "1", features = ["io-util"] }
+tokio = { version = "1", features = ["io-util", "rt"] }
 tokio-tls-listener = "0.1"
 
 [dev-dependencies]
