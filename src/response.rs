@@ -38,6 +38,11 @@ impl Response {
     pub async fn write(self, data: impl Into<Bytes>) -> Result<()> {
         self.send_stream()?.end_write(data).await
     }
+
+    #[inline]
+    pub fn write_unbound(self, data: impl Into<Bytes>) -> Result<()> {
+        self.send_stream()?.end_write_unbound(data)
+    }
 }
 
 pub struct Sender {
