@@ -3,12 +3,20 @@ name = "h2x"
 version = "0.1.0"
 edition = "2021"
 
+license = "MIT"
+keywords = ["http2", "h2"]
+authors = ["Nur <nurmohammed840@gmail.com>"]
+repository = "https://github.com/nurmohammed840/h2x"
+description = "Thin wrapper around `h2` with some ergonomic API for building HTTP/2 servers"
+
+exclude = ["/examples", ".*"]
+
 [dependencies]
 bytes = "1"
 h2 = "0.3"
 http = "0.2"
 tokio = { version = "1", features = ["io-util"] }
-tokio-tls-listener = { git = "https://github.com/nurmohammed840/tokio-tls-listener" }
+tokio-tls-listener = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

@@ -1,8 +1,8 @@
 ## h2x
 
-`h2x` is a Rust library that provides a wrapper around the h2 crate, offering additional functionality and utility functions for working with the HTTP/2 protocol.
+`h2x` is a Rust library that provides a wrapper around the [h2](https://github.com/hyperium/h2) crate, offering additional functionality and utility functions for working with the HTTP/2 protocol.
 
-It aims to simplify the usage of the h2 crate and provide a more ergonomic API for building HTTP/2 servers.
+It aims to simplify the usage of the `h2` crate and provide a more ergonomic API for building HTTP/2 servers.
 
 ## Getting Started
 
