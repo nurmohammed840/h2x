@@ -53,36 +53,15 @@ where
 
     #[inline]
     pub fn accept(&mut self) -> Accept<IO> {
-        Accept { conn: &mut self.0 }
+        Accept { this: self }
     }
-}
 
-impl<IO> ops::Deref for Conn<IO> {
-    type Target = h2::server::Connection<IO, Bytes>;
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl<IO> ops::DerefMut for Conn<IO> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-pub struct Accept<'a, IO> {
-    pub conn: &'a mut h2::server::Connection<IO, Bytes>,
-}
-
-impl<IO> Future for Accept<'_, IO>
-where
-    IO: Unpin + AsyncRead + AsyncWrite,
-{
-    type Output = Option<Result<(Request, Response)>>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.conn.poll_accept(cx).map(|event| {
+    #[doc(hidden)]
+    pub fn poll_accept(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<(Request, Response)>>> {
+        self.0.poll_accept(cx).map(|event| {
             event.map(|accept| {
                 accept.map(|(req, sender)| {
                     let (head, body) = req.into_parts();
@@ -96,5 +75,34 @@ where
                 })
             })
         })
+    }
+}
+
+impl<IO> ops::Deref for Conn<IO> {
+    type Target = h2::server::Connection<IO, Bytes>;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<IO> ops::DerefMut for Conn<IO> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+pub struct Accept<'a, IO> {
+    this: &'a mut Conn<IO>,
+}
+
+impl<IO> Future for Accept<'_, IO>
+where
+    IO: Unpin + AsyncRead + AsyncWrite,
+{
+    type Output = Option<Result<(Request, Response)>>;
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.this.poll_accept(cx)
     }
 }

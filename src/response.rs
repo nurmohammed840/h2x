@@ -29,27 +29,28 @@ impl Response {
     }
 
     #[inline]
-    pub fn send_stream(self) -> Result<Sender> {
+    pub fn send_stream(self) -> Result<Responder> {
         let inner = self.create_response(false)?;
-        Ok(Sender { inner })
+        Ok(Responder { inner })
     }
 
     #[inline]
-    pub async fn write(self, data: impl Into<Bytes>) -> Result<()> {
-        self.send_stream()?.end_write(data).await
+    pub async fn write(self, bytes: impl Into<Bytes>) -> Result<()> {
+        self.send_stream()?.end_write(bytes).await
     }
 
     #[inline]
-    pub fn write_unbound(self, data: impl Into<Bytes>) -> Result<()> {
-        self.send_stream()?.end_write_unbound(data)
+    pub fn write_unbound(self, bytes: impl Into<Bytes>) -> Result<()> {
+        self.send_stream()?.end_write_unbound(bytes)
     }
 }
 
-pub struct Sender {
+pub struct Responder {
+    #[doc(hidden)]
     pub inner: h2::SendStream<Bytes>,
 }
 
-impl Sender {
+impl Responder {
     #[doc(hidden)]
     pub async fn write_bytes(&mut self, mut bytes: Bytes, end: bool) -> Result<()> {
         loop {
@@ -72,12 +73,12 @@ impl Sender {
         self.write_bytes(bytes.into(), false).await
     }
 
-    pub fn write_unbound(&mut self, bytes: impl Into<Bytes>) -> Result<()> {
-        self.inner.send_data(bytes.into(), false)
-    }
-
     pub async fn end_write(mut self, bytes: impl Into<Bytes>) -> Result<()> {
         self.write_bytes(bytes.into(), true).await
+    }
+
+    pub fn write_unbound(&mut self, bytes: impl Into<Bytes>) -> Result<()> {
+        self.inner.send_data(bytes.into(), false)
     }
 
     pub fn end_write_unbound(mut self, bytes: impl Into<Bytes>) -> Result<()> {

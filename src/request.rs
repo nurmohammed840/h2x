@@ -10,7 +10,18 @@ pub struct Request {
 impl Request {
     #[inline]
     pub fn data(&mut self) -> Data {
-        Data(&mut self.body)
+        Data(self)
+    }
+
+    #[doc(hidden)]
+    pub fn poll_data(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<bytes::Bytes>>> {
+        self.body.poll_data(cx).map(|out| match out {
+            Some(Ok(data)) => {
+                let _ = self.body.flow_control().release_capacity(data.len());
+                Some(Ok(data))
+            }
+            v => v,
+        })
     }
 
     #[inline]
@@ -29,21 +40,6 @@ impl Request {
     }
 }
 
-pub struct Data<'a>(&'a mut RecvStream);
-
-impl Future for Data<'_> {
-    type Output = Option<Result<bytes::Bytes>>;
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.0.poll_data(cx).map(|out| match out {
-            Some(Ok(data)) => {
-                let _ = self.0.flow_control().release_capacity(data.len());
-                Some(Ok(data))
-            }
-            v => v,
-        })
-    }
-}
-
 impl std::ops::Deref for Request {
     type Target = http::request::Parts;
 
@@ -57,5 +53,14 @@ impl std::ops::DerefMut for Request {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.head
+    }
+}
+
+pub struct Data<'a>(&'a mut Request);
+
+impl Future for Data<'_> {
+    type Output = Option<Result<bytes::Bytes>>;
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.0.poll_data(cx)
     }
 }

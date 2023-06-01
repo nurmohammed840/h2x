@@ -70,38 +70,3 @@ async fn handler(id: usize, req: Request, mut res: Response) -> h2x::Result<()> 
         }
     }
 }
-
-// mod tests {
-//     #![allow(warnings)]
-//     use super::*;
-//     use std::{future::Future, pin::pin, time::Duration};
-
-//     async fn test_name() {
-//         let mut f = pin!(async {
-//             // std::future::pending::<()>().await;
-//             println!("Ok");
-//             tokio::task::spawn_blocking(|| {
-//                 std::thread::sleep(Duration::from_secs(2));
-//             })
-//             .await;
-//             println!("Done!");
-//         });
-//         let mut fa = 0;
-//         std::future::poll_fn(|cx| {
-//             fa += 1;
-//             println!("Polled!");
-//             f.as_mut().poll(cx)
-//         })
-//         .await;
-//         println!("{:?}", fa);
-//     }
-
-//     #[tokio::main]
-//     async fn s() {
-//         test_name().await;
-//     }
-//     #[test]
-//     fn wda() {
-//         s();
-//     }
-// }
