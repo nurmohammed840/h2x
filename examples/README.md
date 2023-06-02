@@ -5,4 +5,5 @@ openssl req -x509 -newkey rsa:4096 -nodes -sha256 -days 365 -subj "/CN=localhost
 ```
 
 - Run example: `cargo run --example hello_world`
-- Goto: https://127.0.0.1:4433/
+
+Goto https://127.0.0.1:4433/ or run `curl -k https://127.0.0.1:4433`

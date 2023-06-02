@@ -2,12 +2,12 @@ use h2x::{
     http::{HeaderValue, Method, StatusCode},
     *,
 };
-
 use std::{
     fs,
     io::Result,
+    net::SocketAddr,
     ops::ControlFlow,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 #[tokio::main]
@@ -23,28 +23,32 @@ async fn main() -> Result<()> {
 
     println!("Goto: https://{}/", server.listener.local_addr()?);
 
-    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+    static IS_RUNNING: AtomicBool = AtomicBool::new(true);
+
+    tokio::spawn(async {
+        tokio::signal::ctrl_c().await.unwrap();
+        IS_RUNNING.store(false, Ordering::Relaxed);
+    });
+
     let c = server
         .serve_with_graceful_shutdown(
             |addr| {
-                let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-                if id == 1 {
-                    // Shutting down the server on the second connection.
+                if !IS_RUNNING.load(Ordering::Acquire) {
                     return ControlFlow::Break(());
                 }
-                println!("Connection ID {id}: {:?}", addr);
-                ControlFlow::Continue(Some(id))
+                println!("[{addr}] New connection");
+                ControlFlow::Continue(Some(addr))
             },
-            |_conn, id, req, res| handler(id, req, res),
+            |_conn, addr, req, res| handler(addr, req, res),
         )
         .await;
 
-    println!("Closing...");
+    println!("\nClosing...");
     Ok(c.await)
 }
 
-async fn handler(id: usize, req: Request, mut res: Response) -> h2x::Result<()> {
-    println!("New request from {id}: {}", req.uri.path());
+async fn handler(addr: SocketAddr, req: Request, mut res: Response) -> h2x::Result<()> {
+    println!("[{addr}] {req:#?}");
 
     res.headers
         .append("access-control-allow-origin", HeaderValue::from_static("*"));

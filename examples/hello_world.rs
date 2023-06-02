@@ -17,11 +17,11 @@ async fn main() -> Result<()> {
     server
         .serve(
             |addr| {
-                println!("New connection: {addr}");
+                println!("[{addr}] NEW CONNECTION");
                 ControlFlow::Continue(Some(addr))
             },
             |_conn, addr, req, mut res| async move {
-                println!("New request from {addr} at {}", req.uri.path());
+                println!("[{addr}] {req:#?}");
                 let _ = match (req.method.clone(), req.uri.path()) {
                     (Method::GET, "/") => res.write("<H1>Hello, World</H1>").await,
                     (method, path) => {

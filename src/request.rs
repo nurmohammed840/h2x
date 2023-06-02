@@ -2,7 +2,6 @@ use super::*;
 use h2::RecvStream;
 
 /// Represents an HTTP request object. It consists of the request headers and body.
-#[derive(Debug)]
 pub struct Request {
     pub(crate) head: http::request::Parts,
     pub(crate) body: RecvStream,
@@ -48,6 +47,13 @@ impl Request {
     #[inline]
     pub fn trailers(&mut self) -> impl Future<Output = Result<Option<http::HeaderMap>>> + '_ {
         self.body.trailers()
+    }
+}
+
+impl std::fmt::Debug for Request {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Request")?;
+        self.head.fmt(f)
     }
 }
 
