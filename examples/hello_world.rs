@@ -16,14 +16,14 @@ async fn main() -> Result<()> {
 
     server
         .serve(
-            |addr| {
+            |addr| async move {
                 println!("[{addr}] NEW CONNECTION");
                 ControlFlow::Continue(Some(addr))
             },
             |_conn, addr, req, mut res| async move {
                 println!("[{addr}] {req:#?}");
-                let _ = match (req.method.clone(), req.uri.path()) {
-                    (Method::GET, "/") => res.write("<H1>Hello, World</H1>").await,
+                let _ = match (&req.method, req.uri.path()) {
+                    (&Method::GET, "/") => res.write("<H1>Hello, World</H1>").await,
                     (method, path) => {
                         res.status = StatusCode::NOT_FOUND;
                         res.write(format!("{method} {path}")).await

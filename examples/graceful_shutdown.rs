@@ -1,14 +1,9 @@
 use h2x::{
     http::{HeaderValue, Method, StatusCode},
+    shutdown::ShutDownState,
     *,
 };
-use std::{
-    fs,
-    io::Result,
-    net::SocketAddr,
-    ops::ControlFlow,
-    sync::atomic::{AtomicBool, Ordering},
-};
+use std::{fs, future::Future, io::Result, net::SocketAddr, pin::pin, task::Poll};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -23,28 +18,29 @@ async fn main() -> Result<()> {
 
     println!("Goto: https://{}/", server.listener.local_addr()?);
 
-    static IS_RUNNING: AtomicBool = AtomicBool::new(true);
+    let state = ShutDownState::new();
 
-    tokio::spawn(async {
-        tokio::signal::ctrl_c().await.unwrap();
-        IS_RUNNING.store(false, Ordering::Relaxed);
-    });
-
-    let c = server
-        .serve_with_graceful_shutdown(
-            |addr| {
-                if !IS_RUNNING.load(Ordering::Acquire) {
-                    return ControlFlow::Break(());
-                }
-                println!("[{addr}] New connection");
-                ControlFlow::Continue(Some(addr))
-            },
-            |_conn, addr, req, res| handler(addr, req, res),
-        )
+    let (server, wait_for_shutdown) = server.serve_with_graceful_shutdown(
+        state,
+        |addr| async move {
+            println!("[{addr}] New connection");
+            Some(addr)
+        },
+        |_conn, addr, req, res| handler(addr, req, res),
+    );
+    {
+        let mut server = pin!(server);
+        let mut signal = pin!(tokio::signal::ctrl_c());
+        std::future::poll_fn(|cx| {
+            if signal.as_mut().poll(cx).is_ready() {
+                return Poll::Ready(());
+            }
+            server.as_mut().poll(cx).map(|_| ())
+        })
         .await;
-
+    }
     println!("\nClosing...");
-    Ok(c.await)
+    Ok(wait_for_shutdown.await)
 }
 
 async fn handler(addr: SocketAddr, req: Request, mut res: Response) -> h2x::Result<()> {

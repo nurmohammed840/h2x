@@ -1,8 +1,15 @@
 ## h2x
 
-`h2x` is a Rust library that provides a wrapper around the [h2](https://github.com/hyperium/h2) crate, offering additional functionality and utility functions for working with the HTTP/2 protocol.
+`h2x` provides a wrapper around the [h2](https://github.com/hyperium/h2) crate, offering additional functionality and utility functions for working with the HTTP/2 protocol.
 
 It aims to simplify the usage of the `h2` crate and provide a more ergonomic API for building HTTP/2 servers.
+
+## Goals
+
+- Managing TCP connections
+- TLS
+
+If you only need HTTP/2 server and can't sacrifice any overhead this library is for you.
 
 ## Getting Started
 
@@ -10,7 +17,7 @@ To use `h2x` in your Rust project, add it as a dependency in your `Cargo.toml` f
 
 ```toml
 [dependencies]
-h2x = "0.1"
+h2x = "0.2"
 ```
 
 ### Example 
@@ -36,14 +43,14 @@ async fn main() -> Result<()> {
 
     server
         .serve(
-            |addr| {
+            |addr| async move {
                 println!("[{addr}] NEW CONNECTION");
                 ControlFlow::Continue(Some(addr))
             },
             |_conn, addr, req, mut res| async move {
                 println!("[{addr}] {req:#?}");
-                let _ = match (req.method.clone(), req.uri.path()) {
-                    (Method::GET, "/") => res.write("<H1>Hello, World</H1>").await,
+                let _ = match (&req.method, req.uri.path()) {
+                    (&Method::GET, "/") => res.write("<H1>Hello, World</H1>").await,
                     (method, path) => {
                         res.status = StatusCode::NOT_FOUND;
                         res.write(format!("{method} {path}")).await
@@ -56,3 +63,5 @@ async fn main() -> Result<()> {
     Ok(())
 }
 ```
+
+For more examples, see [./examples](https://github.com/nurmohammed840/h2x/tree/master/examples) directory.

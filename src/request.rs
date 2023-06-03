@@ -1,5 +1,6 @@
 use super::*;
 use h2::RecvStream;
+use http::HeaderMap;
 
 /// Represents an HTTP request object. It consists of the request headers and body.
 pub struct Request {
@@ -9,12 +10,12 @@ pub struct Request {
 
 impl Request {
     /// Retrieve the next chunk of data from the request body.
-    pub async fn data(&mut self) -> Option<Result<bytes::Bytes>> {
+    pub async fn data(&mut self) -> Option<Result<Bytes>> {
         poll_fn(|cx| self.poll_data(cx)).await
     }
 
     #[doc(hidden)]
-    pub fn poll_data(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<bytes::Bytes>>> {
+    pub fn poll_data(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<Bytes>>> {
         self.body.poll_data(cx).map(|out| match out {
             Some(Ok(data)) => {
                 let _ = self.body.flow_control().release_capacity(data.len());
@@ -45,7 +46,7 @@ impl Request {
 
     /// Get optional trailers for this stream.
     #[inline]
-    pub fn trailers(&mut self) -> impl Future<Output = Result<Option<http::HeaderMap>>> + '_ {
+    pub fn trailers(&mut self) -> impl Future<Output = Result<Option<HeaderMap>>> + '_ {
         self.body.trailers()
     }
 }

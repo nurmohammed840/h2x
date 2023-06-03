@@ -1,5 +1,5 @@
 use super::*;
-use h2::server::SendResponse;
+use h2::{server::SendResponse, SendStream, StreamId};
 
 /// Represents an HTTP response object.
 #[derive(Debug)]
@@ -20,11 +20,11 @@ impl Response {
     ///
     /// If the lock on the stream store has been poisoned.
     #[inline]
-    pub fn stream_id(&self) -> h2::StreamId {
+    pub fn stream_id(&self) -> StreamId {
         self.sender.stream_id()
     }
 
-    fn create_response(mut self, end: bool) -> Result<h2::SendStream<Bytes>> {
+    fn create_response(mut self, end: bool) -> Result<SendStream<Bytes>> {
         let mut response = http::Response::new(());
         *response.status_mut() = self.status;
         *response.headers_mut() = self.headers;
@@ -68,7 +68,7 @@ impl Response {
 /// It is responsible for sending the HTTP response body.
 pub struct Responder {
     #[doc(hidden)]
-    pub inner: h2::SendStream<Bytes>,
+    pub inner: SendStream<Bytes>,
 }
 
 impl Responder {
