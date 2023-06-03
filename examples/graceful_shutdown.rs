@@ -1,9 +1,10 @@
 use h2x::{
     http::{HeaderValue, Method, StatusCode},
-    shutdown::ShutDownState,
     *,
 };
-use std::{fs, future::Future, io::Result, net::SocketAddr, pin::pin, task::Poll};
+use std::{
+    fs, future::Future, io::Result, net::SocketAddr, ops::ControlFlow, pin::pin, task::Poll,
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -18,34 +19,33 @@ async fn main() -> Result<()> {
 
     println!("Goto: https://{}/", server.listener.local_addr()?);
 
-    let state = ShutDownState::new();
-
     let (server, wait_for_shutdown) = server.serve_with_graceful_shutdown(
-        state,
         |addr| async move {
-            println!("[{addr}] New connection");
-            Some(addr)
+            println!("[{addr}] NEW CONNECTION");
+            ControlFlow::Continue(Some(addr))
         },
         |_conn, addr, req, res| handler(addr, req, res),
+        |addr| async move { println!("[{addr}] CONNECTION CLOSE") },
     );
     {
+        // Close the running server on `CTRL + C`
         let mut server = pin!(server);
         let mut signal = pin!(tokio::signal::ctrl_c());
         std::future::poll_fn(|cx| {
             if signal.as_mut().poll(cx).is_ready() {
                 return Poll::Ready(());
             }
-            server.as_mut().poll(cx).map(|_| ())
+            server.as_mut().poll(cx)
         })
         .await;
     }
     println!("\nClosing...");
-    Ok(wait_for_shutdown.await)
+    wait_for_shutdown.await;
+    Ok(println!("Server closed!"))
 }
 
 async fn handler(addr: SocketAddr, req: Request, mut res: Response) -> h2x::Result<()> {
-    println!("[{addr}] {req:#?}");
-
+    println!("From: {addr} at {}", req.uri.path());
     res.headers
         .append("access-control-allow-origin", HeaderValue::from_static("*"));
 
@@ -65,9 +65,9 @@ async fn handler(addr: SocketAddr, req: Request, mut res: Response) -> h2x::Resu
 
             res.write(body).await
         }
-        (method, path) => {
+        _ => {
             res.status = StatusCode::NOT_FOUND;
-            res.write(format!("{method} {path}")).await
+            res.write(format!("{req:#?}")).await
         }
     }
 }

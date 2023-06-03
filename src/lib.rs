@@ -11,8 +11,8 @@ mod request;
 mod response;
 mod server;
 
-/// Provides functionality for graceful shutdown of running server.
-pub mod shutdown;
+#[doc(hidden)]
+pub mod wait_group;
 
 pub use listener::*;
 pub use request::*;

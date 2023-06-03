@@ -1,5 +1,5 @@
 use super::*;
-use h2::RecvStream;
+use h2::{RecvStream, StreamId};
 use http::HeaderMap;
 
 /// Represents an HTTP request object. It consists of the request headers and body.
@@ -31,7 +31,7 @@ impl Request {
     ///
     /// If the lock on the stream store has been poisoned.
     #[inline]
-    pub fn stream_id(&self) -> h2::StreamId {
+    pub fn stream_id(&self) -> StreamId {
         self.body.stream_id()
     }
 
@@ -46,8 +46,8 @@ impl Request {
 
     /// Get optional trailers for this stream.
     #[inline]
-    pub fn trailers(&mut self) -> impl Future<Output = Result<Option<HeaderMap>>> + '_ {
-        self.body.trailers()
+    pub async fn trailers(&mut self) -> Result<Option<HeaderMap>> {
+        self.body.trailers().await
     }
 }
 
