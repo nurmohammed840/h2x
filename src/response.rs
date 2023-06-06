@@ -72,6 +72,7 @@ pub struct Responder {
 }
 
 impl Responder {
+    /// Make sure `bytes` is **Not Empty**
     #[doc(hidden)]
     pub async fn write_bytes(&mut self, mut bytes: Bytes, end: bool) -> Result<()> {
         loop {
@@ -92,12 +93,20 @@ impl Responder {
 
     /// Sends a single data frame to the remote peer.
     pub async fn write(&mut self, bytes: impl Into<Bytes>) -> Result<()> {
-        self.write_bytes(bytes.into(), false).await
+        let bytes = bytes.into();
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        self.write_bytes(bytes, false).await
     }
 
     /// Sends final chunk of data to the remote peer.
     pub async fn end_write(mut self, bytes: impl Into<Bytes>) -> Result<()> {
-        self.write_bytes(bytes.into(), true).await
+        let bytes = bytes.into();
+        if bytes.is_empty() {
+            return self.end();
+        }
+        self.write_bytes(bytes, true).await
     }
 
     /// The data is buffered and the capacity is implicitly requested. Once the

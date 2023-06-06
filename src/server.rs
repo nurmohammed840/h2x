@@ -48,8 +48,7 @@ impl Server {
     /// use h2x::Server;
     /// use std::{fs, ops::ControlFlow};
     ///
-    /// # #[tokio::main]
-    /// # async fn main() -> std::io::Result<()> {
+    /// # async fn run() -> std::io::Result<()> {
     /// let addr = "127.0.0.1:4433";
     /// let cert = fs::read("cert.pem")?;
     /// let key = fs::read("key.pem")?;
@@ -62,8 +61,8 @@ impl Server {
     ///             println!("[{addr}] NEW CONNECTION");
     ///             ControlFlow::Continue(Some(addr))
     ///         },
-    ///         |_conn, addr, req, res| async move {
-    ///             let _ = res.write(format!("Address: {addr}\n{req:#?}")).await;
+    ///         |_conn, _addr, req, res| async move {
+    ///             let _ = res.write(format!("{req:#?}")).await;
     ///         },
     ///         |addr| async move { println!("[{addr}] CONNECTION CLOSE") },
     ///     );
@@ -160,8 +159,7 @@ impl Server {
     /// use h2x::Server;
     /// use std::{fs, ops::ControlFlow};
     ///
-    /// # #[tokio::main]
-    /// # async fn main() -> std::io::Result<()> {
+    /// # async fn run() -> std::io::Result<()> {
     /// let addr = "127.0.0.1:4433";
     /// let cert = fs::read("cert.pem")?;
     /// let key = fs::read("key.pem")?;
@@ -173,8 +171,8 @@ impl Server {
     ///         println!("[{addr}] NEW CONNECTION");
     ///         ControlFlow::Continue(Some(addr))
     ///     },
-    ///     |_conn, addr, req, res| async move {
-    ///         let _ = res.write(format!("Address: {addr}\n{req:#?}")).await;
+    ///     |_conn, _addr, req, res| async move {
+    ///         let _ = res.write(format!("{req:#?}")).await;
     ///     },
     ///     |addr| async move { println!("[{addr}] CONNECTION CLOSE") },
     /// )
