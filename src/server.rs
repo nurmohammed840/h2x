@@ -1,149 +1,92 @@
-use crate::wait_group::WaitGroup;
-
 use super::*;
-use std::{
-    io::BufRead,
-    net::SocketAddr,
-    ops::ControlFlow,
-    sync::{
-        atomic::{self, AtomicBool},
-        Arc,
-    },
+use std::{io::BufRead, net::SocketAddr, ops};
+use tokio::{
+    io::{self, AsyncRead, AsyncWrite},
+    net::{TcpStream, ToSocketAddrs},
 };
-use tokio::net::{TcpStream, ToSocketAddrs};
-use tokio_tls_listener::tokio_rustls::server::TlsStream;
+use tokio_tls_listener::{tls_config, tokio_rustls::server::TlsStream, TlsListener};
 
-/// The [Server] represents an HTTP server that listens for incoming connections.
+/// An HTTP/2 server that listens for incoming connections.
 pub struct Server {
-    /// [Listener] is responsible for accepting incoming connections.
-    pub listener: Listener,
-}
-
-impl From<Listener> for Server {
-    fn from(listener: Listener) -> Self {
-        Self { listener }
-    }
+    #[doc(hidden)]
+    /// The underlying [TlsListener] instance that provides secure transport layer functionality
+    pub listener: TlsListener,
 }
 
 impl Server {
-    /// Binds the [Server] to the specified address.
+    /// Bind and listen for incoming connections on the specified address.
     pub async fn bind(
         addr: impl ToSocketAddrs,
         certs: &mut dyn BufRead,
         key: &mut dyn BufRead,
-    ) -> Result<Self, DynErr> {
-        Listener::bind(addr, certs, key).await.map(Self::from)
+    ) -> Result<Self, BoxErr> {
+        let mut conf = tls_config(certs, key)?;
+        conf.alpn_protocols = vec![b"h2".to_vec()];
+        #[cfg(debug_assertions)]
+        if std::env::var("SSLKEYLOGFILE").is_ok() {
+            conf.key_log = std::sync::Arc::new(tokio_tls_listener::rustls::KeyLogFile::new());
+        }
+        Ok(Self {
+            listener: TlsListener::bind(addr, conf).await?,
+        })
     }
 
-    /// Graceful shutdown allow existing connections to complete before shutting down the server.
-    ///
-    /// ### Returns Two Futures:
-    ///
-    /// - First one is for server.
-    /// - Second future will resolves when all existing connections have finished.
-    ///
-    /// ## Example
-    ///
-    /// ```no_run
-    /// use h2x::Server;
-    /// use std::{fs, ops::ControlFlow};
-    ///
-    /// # async fn run() -> std::io::Result<()> {
-    /// let addr = "127.0.0.1:4433";
-    /// let cert = fs::read("cert.pem")?;
-    /// let key = fs::read("key.pem")?;
-    ///
-    /// println!("Goto: https://{addr}");
-    ///
-    /// let (server, wait_for_shutdown) = Server::bind(addr, &mut &*cert, &mut &*key).await.unwrap()
-    ///     .serve_with_graceful_shutdown(
-    ///         |addr| async move {
-    ///             println!("[{addr}] NEW CONNECTION");
-    ///             ControlFlow::Continue(Some(addr))
-    ///         },
-    ///         |_conn, _addr, req, res| async move {
-    ///             let _ = res.write(format!("{req:#?}")).await;
-    ///         },
-    ///         |addr| async move { println!("[{addr}] CONNECTION CLOSE") },
-    ///     );
-    ///
-    /// // Close the running server on `CTRL + C`
-    /// tokio::select! {
-    ///     _ = tokio::signal::ctrl_c() => {}
-    ///     _ = server => {}
-    /// }
-    /// println!("\nClosing...");
-    /// wait_for_shutdown.await;
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn serve_with_graceful_shutdown<State, Accept, Stream, Close>(
-        mut self,
-        on_accept: impl FnOnce(SocketAddr) -> Accept + Clone,
-        on_stream: fn(&mut Conn<TlsStream<TcpStream>>, State, Request, Response) -> Stream,
-        on_close: fn(State) -> Close,
-    ) -> (impl Future<Output = ()>, impl Future<Output = ()>)
-    where
-        State: Clone + Send + 'static,
-        Accept: Future<Output = ControlFlow<(), Option<State>>>,
-        Stream: Future + Send + 'static,
-        Close: Future + Send + 'static,
-    {
-        struct ShutdownOnDrop(Arc<AtomicBool>);
-        impl Drop for ShutdownOnDrop {
-            fn drop(&mut self) {
-                self.0.store(true, atomic::Ordering::Relaxed);
-            }
-        }
-        let state = Arc::new(AtomicBool::new(false));
-        let wg = ShutdownOnDrop(Arc::clone(&state));
-        let server = async move {
-            loop {
-                let Ok((mut conn, addr)) = self.listener.accept().await else { continue };
-                let on_accept = on_accept.clone();
-                let state = match on_accept(addr).await {
-                    ControlFlow::Continue(ctx) => match ctx {
-                        Some(state) => state,
-                        None => continue,
-                    },
-                    ControlFlow::Break(_) => break,
-                };
-                let wg = Arc::clone(&wg.0);
-                tokio::spawn(async move {
-                    while let Some(Ok((req, res))) = conn.accept().await {
-                        if wg.load(atomic::Ordering::Acquire) {
-                            conn.0.graceful_shutdown();
-                        } else {
-                            let wg = Arc::clone(&wg);
-                            let state = state.clone();
-                            let future = on_stream(&mut conn, state, req, res);
-                            tokio::spawn(async move {
-                                let _ = future.await;
-                                drop(wg);
-                            });
-                        }
-                    }
-                    on_close(state).await;
-                    drop(wg);
-                });
-            }
-            drop(wg);
-        };
-        (server, WaitGroup(state))
+    pub fn with_graceful_shutdown(self) -> GracefulShutdown<Self> {
+        GracefulShutdown::new(self)
+    }
+
+    /// Accept incoming connections
+    #[inline]
+    pub async fn accept(&self) -> io::Result<(Conn<TlsStream<TcpStream>>, SocketAddr)> {
+        let (stream, addr) = self.listener.accept_tls().await?;
+        let conn = Conn::handshake(stream).await.map_err(io_err)?;
+        Ok((conn, addr))
+    }
+}
+
+/// Represents an HTTP/2 connection.
+#[derive(Debug)]
+pub struct Conn<IO> {
+    inner: h2::server::Connection<IO, Bytes>,
+}
+
+impl<IO> Conn<IO>
+where
+    IO: Unpin + AsyncRead + AsyncWrite,
+{
+    /// Creates a new configured HTTP/2 server with default configuration.
+    #[inline]
+    pub async fn handshake(io: IO) -> Result<Conn<IO>> {
+        h2::server::handshake(io).await.map(|inner| Self { inner })
+    }
+
+    /// Accept a new incoming stream on the HTTP/2 connection
+    pub async fn accept(&mut self) -> Option<Result<(Request, Response)>> {
+        poll_fn(|cx| self.poll_accept(cx)).await
+    }
+
+    #[doc(hidden)]
+    pub fn poll_accept(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<(Request, Response)>>> {
+        self.inner.poll_accept(cx).map(|event| {
+            event.map(|accept| {
+                accept.map(|(req, sender)| {
+                    let (head, body) = req.into_parts();
+                    let request = Request { head, body };
+                    let response = Response {
+                        status: http::StatusCode::default(),
+                        headers: http::HeaderMap::default(),
+                        sender,
+                    };
+                    (request, response)
+                })
+            })
+        })
     }
 
     /// Starts serving incoming connections and handling streams using the provided callbacks.
-    ///
-    /// ### `on_accept`
-    ///
-    /// Called once for each accepted connection. This closure that takes a [SocketAddr]
-    /// and returns a [ControlFlow] enum indicating how the server should handle the connection.
-    ///
-    /// The different variants of control-flow are:
-    ///
-    /// - `ControlFlow::Continue(Some(<State>))`: Accepts the HTTP connection with the provided state.
-    /// - `ControlFlow::Continue(None)`: Rejects the HTTP connection.
-    /// - `ControlFlow::Break(())`: Stopping the server from accepting further connections.
     ///
     /// ### `on_stream`
     ///
@@ -157,58 +100,70 @@ impl Server {
     ///
     /// ```no_run
     /// use h2x::Server;
-    /// use std::{fs, ops::ControlFlow};
+    /// use std::fs;
     ///
-    /// # async fn run() -> std::io::Result<()> {
-    /// let addr = "127.0.0.1:4433";
+    /// # async fn _run() -> std::io::Result<()> {
     /// let cert = fs::read("cert.pem")?;
     /// let key = fs::read("key.pem")?;
     ///
-    /// println!("Goto: https://{addr}");
+    /// let server = Server::bind("127.0.0.1:4433", &mut &*cert, &mut &*key).await.unwrap();
+    /// println!("Goto: https://{}", server.local_addr()?);
     ///
-    /// Server::bind(addr, &mut &*cert, &mut &*key).await.unwrap().serve(
-    ///     |addr| async move {
-    ///         println!("[{addr}] NEW CONNECTION");
-    ///         ControlFlow::Continue(Some(addr))
-    ///     },
-    ///     |_conn, _addr, req, res| async move {
-    ///         let _ = res.write(format!("{req:#?}")).await;
-    ///     },
-    ///     |addr| async move { println!("[{addr}] CONNECTION CLOSE") },
-    /// )
-    /// .await;
-    /// # Ok(())
+    /// loop {
+    ///     let (conn, addr) = server.accept().await?;
+    ///
+    ///     conn.incoming(
+    ///         addr,
+    ///         |_, _, req, res| async move {
+    ///             let _ = res.write(format!("{req:#?}")).await;
+    ///         },
+    ///         |addr| async move { println!("[{addr}] CONNECTION CLOSE") },
+    ///     )
+    /// }
     /// # }
     /// ```
-    pub async fn serve<State, Accept, Stream, Close>(
+    pub fn incoming<State, Stream, Close>(
         mut self,
-        on_accept: impl FnOnce(SocketAddr) -> Accept + Clone,
-        on_stream: fn(&mut Conn<TlsStream<TcpStream>>, State, Request, Response) -> Stream,
+        state: State,
+        on_stream: fn(&mut Self, State, Request, Response) -> Stream,
         on_close: fn(State) -> Close,
     ) where
+        IO: Send + 'static,
         State: Clone + Send + 'static,
-        Accept: Future<Output = ControlFlow<(), Option<State>>>,
         Stream: Future + Send + 'static,
         Stream::Output: Send,
         Close: Future + Send + 'static,
     {
-        loop {
-            let Ok((mut conn, addr)) = self.listener.accept().await else { continue };
-            let on_accept = on_accept.clone();
-            let state = match on_accept(addr).await {
-                ControlFlow::Continue(ctx) => match ctx {
-                    Some(state) => state,
-                    None => continue,
-                },
-                ControlFlow::Break(_) => break,
-            };
-            tokio::spawn(async move {
-                while let Some(Ok((req, res))) = conn.accept().await {
-                    let state = state.clone();
-                    tokio::spawn(on_stream(&mut conn, state, req, res));
-                }
-                on_close(state).await;
-            });
-        }
+        tokio::spawn(async move {
+            while let Some(Ok((req, res))) = self.accept().await {
+                let state = state.clone();
+                tokio::spawn(on_stream(&mut self, state, req, res));
+            }
+            on_close(state).await;
+        });
+    }
+}
+
+impl ops::Deref for Server {
+    type Target = TlsListener;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.listener
+    }
+}
+
+impl<IO> ops::Deref for Conn<IO> {
+    type Target = h2::server::Connection<IO, Bytes>;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<IO> ops::DerefMut for Conn<IO> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
     }
 }

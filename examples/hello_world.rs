@@ -1,25 +1,23 @@
 use h2x::*;
 use http::{Method, StatusCode};
-use std::{fs, io::Result, ops::ControlFlow};
+use std::{error::Error, fs};
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    let addr = "127.0.0.1:4433";
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let cert = fs::read("examples/cert.pem")?;
     let key = fs::read("examples/key.pem")?;
 
-    println!("Goto: https://{addr}");
+    let server = Server::bind("127.0.0.1:4433", &mut &*cert, &mut &*key).await?;
+    println!("Goto: https://{}", server.local_addr()?);
+    loop {
+        let (conn, addr) = server.accept().await?;
+        println!("[{}] NEW CONNECTION", addr);
 
-    Server::bind(addr, &mut &*cert, &mut &*key)
-        .await
-        .unwrap()
-        .serve(
-            |addr| async move {
-                println!("[{addr}] NEW CONNECTION");
-                ControlFlow::Continue(Some(addr))
-            },
-            |_conn, addr, mut req, mut res| async move {
+        conn.incoming(
+            addr,
+            |_, addr, mut req, mut res| async move {
                 println!("From: {addr} at {}", req.uri.path());
+
                 match (&req.method, req.uri.path()) {
                     (&Method::GET, "/") => res.write("<H1>Hello, World</H1>").await,
                     _ => {
@@ -35,8 +33,6 @@ async fn main() -> Result<()> {
                 }
             },
             |addr| async move { println!("[{addr}] CONNECTION CLOSE") },
-        )
-        .await;
-
-    Ok(())
+        );
+    }
 }
