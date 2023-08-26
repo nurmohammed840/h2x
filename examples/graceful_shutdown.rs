@@ -17,12 +17,14 @@ async fn main() -> Result<()> {
     println!("Goto: https://{}/", server.local_addr()?);
 
     let serve = async {
-        while let Ok((conn, addr)) = server.accept().await {
-            conn.incoming(
-                addr,
-                |_, addr, req, res| handler(addr, req, res),
-                |addr| async move { println!("[{addr}] CONNECTION CLOSE") },
-            );
+        loop {
+            if let Ok((conn, addr)) = server.accept().await {
+                conn.incoming(
+                    addr,
+                    |_, addr, req, res| handler(addr, req, res),
+                    |addr| async move { println!("[{addr}] CONNECTION CLOSE") },
+                );
+            }
         }
     };
     // Close the running server on `CTRL + C`

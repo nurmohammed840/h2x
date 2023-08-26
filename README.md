@@ -17,7 +17,7 @@ To use `h2x` in your Rust project, add it as a dependency in your `Cargo.toml` f
 
 ```toml
 [dependencies]
-h2x = "0.3"
+h2x = "0.4"
 ```
 
 ### Example 
@@ -27,41 +27,41 @@ You can run this example with: `cargo run --example hello_world`
 ```rust no_run
 use h2x::*;
 use http::{Method, StatusCode};
-use std::{fs, io::Result, ops::ControlFlow};
+use std::{error::Error, fs};
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    let addr = "127.0.0.1:4433";
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let cert = fs::read("examples/cert.pem")?;
     let key = fs::read("examples/key.pem")?;
 
-    println!("Goto: https://{addr}");
+    let server = Server::bind("127.0.0.1:4433", &mut &*cert, &mut &*key).await?;
+    println!("Goto: https://{}", server.local_addr()?);
+    loop {
+        if let Ok((conn, addr)) = server.accept().await {
+            println!("[{}] NEW CONNECTION", addr);
+            conn.incoming(
+                addr,
+                |_, addr, mut req, mut res| async move {
+                    println!("From: {addr} at {}", req.uri.path());
 
-    Server::bind(addr, &mut &*cert, &mut &*key).await.unwrap().serve(
-        |addr| async move {
-            println!("[{addr}] NEW CONNECTION");
-            ControlFlow::Continue(Some(addr))
-        },
-        |_conn, _addr, mut req, mut res| async move {
-            match (&req.method, req.uri.path()) {
-                (&Method::GET, "/") => res.write("<H1>Hello, World</H1>").await,
-                _ => {
-                    // Echo
-                    res.status = StatusCode::NOT_FOUND;
-                    let mut stream = res.send_stream()?;
-                    stream.write(format!("{req:#?}")).await?;
-                    while let Some(bytes) = req.data().await {
-                        stream.write(bytes?).await?;
+                    match (&req.method, req.uri.path()) {
+                        (&Method::GET, "/") => res.write("<H1>Hello, World</H1>").await,
+                        _ => {
+                            // Echo
+                            res.status = StatusCode::NOT_FOUND;
+                            let mut stream = res.send_stream()?;
+                            stream.write(format!("{req:#?}\n")).await?;
+                            while let Some(bytes) = req.data().await {
+                                stream.write(bytes?).await?;
+                            }
+                            stream.end()
+                        }
                     }
-                    stream.end()
-                }
-            }
-        },
-        |addr| async move { println!("[{addr}] CONNECTION CLOSE") },
-    )
-    .await;
-
-    Ok(())
+                },
+                |addr| async move { println!("[{addr}] CONNECTION CLOSE") },
+            );
+        }
+    }
 }
 ```
 

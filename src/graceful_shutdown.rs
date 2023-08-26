@@ -15,6 +15,9 @@ use std::{
     },
 };
 
+/// It allows gracefully shutdown capabilities for a server.
+///
+/// created from [`Server::with_graceful_shutdown()`] method.
 pub struct GracefulShutdown<T> {
     is_closed: Arc<AtomicBool>,
     inner: T,
@@ -28,6 +31,9 @@ impl<T> GracefulShutdown<T> {
         }
     }
 
+    /// Returns the current number of active connections being served.
+    ///
+    /// This method retrieves the count of active connections that the server is currently processing.
     pub fn num_of_conn(&self) -> usize {
         Arc::strong_count(&self.is_closed)
     }
@@ -45,6 +51,14 @@ impl GracefulShutdown<Server> {
         })
     }
 
+    /// After calling this method, the server will stop accepting
+    /// new connections and will eventually complete ongoing requests before
+    /// shutting down.
+    ///
+    /// During the graceful shutdown process, the server will complete ongoing
+    /// requests before closing the active connections. Once all active connections
+    /// are served and no new connections are accepted, the server will completely
+    /// shut down.
     pub fn shutdown(self) -> impl Future {
         self.is_closed.store(true, Ordering::Relaxed);
         future::poll_fn(move |cx| {
@@ -63,6 +77,7 @@ impl<IO> GracefulShutdown<Conn<IO>>
 where
     IO: Unpin + AsyncRead + AsyncWrite + Send + 'static,
 {
+    /// See [`Conn::incoming`]
     pub fn incoming<State, Stream, Close>(
         mut self,
         state: State,

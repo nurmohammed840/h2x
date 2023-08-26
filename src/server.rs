@@ -31,6 +31,8 @@ impl Server {
         })
     }
 
+    /// This method wraps the current server instance and returns a [GracefulShutdown]
+    /// instance that allows for a controlled shutdown of the server.
     pub fn with_graceful_shutdown(self) -> GracefulShutdown<Self> {
         GracefulShutdown::new(self)
     }
@@ -110,15 +112,15 @@ where
     /// println!("Goto: https://{}", server.local_addr()?);
     ///
     /// loop {
-    ///     let (conn, addr) = server.accept().await?;
-    ///
-    ///     conn.incoming(
-    ///         addr,
-    ///         |_, _, req, res| async move {
-    ///             let _ = res.write(format!("{req:#?}")).await;
-    ///         },
-    ///         |addr| async move { println!("[{addr}] CONNECTION CLOSE") },
-    ///     )
+    ///  if let Ok((conn, addr)) = server.accept().await {
+    ///    conn.incoming(
+    ///      addr,
+    ///      |_, _, req, res| async move {
+    ///        let _ = res.write(format!("{req:#?}")).await;
+    ///      },
+    ///      |addr| async move { println!("[{addr}] CONNECTION CLOSE") }
+    ///    )
+    ///  }
     /// }
     /// # }
     /// ```
