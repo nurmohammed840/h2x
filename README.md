@@ -17,7 +17,7 @@ To use `h2x` in your Rust project, add it as a dependency in your `Cargo.toml` f
 
 ```toml
 [dependencies]
-h2x = "0.4"
+h2x = "0.5"
 ```
 
 ### Example 
