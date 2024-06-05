@@ -9,11 +9,13 @@ pub struct Request {
 }
 
 impl Request {
+    #[inline]
     /// Retrieve the next chunk of data from the request body.
     pub async fn data(&mut self) -> Option<Result<Bytes>> {
         poll_fn(|cx| self.poll_data(cx)).await
     }
 
+    #[inline]
     #[doc(hidden)]
     pub fn poll_data(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<Bytes>>> {
         self.body.poll_data(cx).map(|out| match out {

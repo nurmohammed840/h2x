@@ -1,10 +1,10 @@
 use super::*;
-use std::{io::BufRead, net::SocketAddr, ops};
+use std::{net::SocketAddr, ops, path::Path, sync::Arc};
 use tokio::{
     io::{self, AsyncRead, AsyncWrite},
-    net::{TcpStream, ToSocketAddrs},
+    net::{TcpStream, ToSocketAddrs}, task,
 };
-use tokio_tls_listener::{tls_config, tokio_rustls::server::TlsStream, TlsListener};
+use tokio_tls_listener::{rustls, tokio_rustls::server::TlsStream, TlsListener};
 
 /// An HTTP/2 server that listens for incoming connections.
 pub struct Server {
@@ -14,18 +14,25 @@ pub struct Server {
 }
 
 impl Server {
-    /// Bind and listen for incoming connections on the specified address.
-    pub async fn bind(
-        addr: impl ToSocketAddrs,
-        certs: &mut dyn BufRead,
-        key: &mut dyn BufRead,
-    ) -> Result<Self, BoxErr> {
-        let mut conf = tls_config(certs, key)?;
+    /// Default TLS server configuration.  
+    pub fn config(
+        key: impl AsRef<Path>,
+        cert: impl AsRef<Path>,
+    ) -> io::Result<rustls::ServerConfig> {
+        let mut conf = tokio_tls_listener::load_tls_config(key, cert)?;
         conf.alpn_protocols = vec![b"h2".to_vec()];
         #[cfg(debug_assertions)]
         if std::env::var("SSLKEYLOGFILE").is_ok() {
-            conf.key_log = std::sync::Arc::new(tokio_tls_listener::rustls::KeyLogFile::new());
+            conf.key_log = std::sync::Arc::new(rustls::KeyLogFile::new());
         }
+        Ok(conf)
+    }
+
+    /// Bind and listen for incoming connections on the specified address.
+    pub async fn bind(
+        addr: impl ToSocketAddrs,
+        conf: impl Into<Arc<rustls::ServerConfig>>,
+    ) -> io::Result<Self> {
         Ok(Self {
             listener: TlsListener::bind(addr, conf).await?,
         })
@@ -101,48 +108,57 @@ where
     /// ## Example
     ///
     /// ```no_run
-    /// use h2x::Server;
-    /// use std::fs;
+    /// use h2x::*;
+    /// use http::{Method, StatusCode};
+    /// use std::{io, net::SocketAddr};
     ///
-    /// # async fn _run() -> std::io::Result<()> {
-    /// let cert = fs::read("cert.pem")?;
-    /// let key = fs::read("key.pem")?;
-    ///
-    /// let server = Server::bind("127.0.0.1:4433", &mut &*cert, &mut &*key).await.unwrap();
-    /// println!("Goto: https://{}", server.local_addr()?);
-    ///
-    /// loop {
-    ///  if let Ok((conn, addr)) = server.accept().await {
-    ///    conn.incoming(
-    ///      addr,
-    ///      |_, _, req, res| async move {
-    ///        let _ = res.write(format!("{req:#?}")).await;
-    ///      },
-    ///      |addr| async move { println!("[{addr}] CONNECTION CLOSE") }
-    ///    )
-    ///  }
+    /// #[derive(Clone)]
+    /// struct Service {
+    ///     addr: SocketAddr,
     /// }
-    /// # }
+    ///
+    /// impl Incoming for Service {
+    ///     async fn stream(self, req: Request, mut res: Response) {
+    ///         println!("From: {} at {}", self.addr, req.uri.path());
+    ///         let _ = match (&req.method, req.uri.path()) {
+    ///             (&Method::GET, "/") => res.write("<H1>Hello, World</H1>").await,
+    ///             _ => {
+    ///                 res.status = StatusCode::NOT_FOUND;
+    ///                 res.write(format!("{req:#?}\n")).await
+    ///             }
+    ///         };
+    ///     }
+    ///
+    ///     async fn close(self) {
+    ///         println!("[{}] CONNECTION CLOSE", self.addr)
+    ///     }
+    /// }
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> io::Result<()> {
+    ///     let conf = Server::config("examples/key.pem", "examples/cert.pem")?;
+    ///     let server = Server::bind("127.0.0.1:4433", conf).await?;
+    ///     println!("Goto: https://{}", server.local_addr()?);
+    ///
+    ///     loop {
+    ///         if let Ok((conn, addr)) = server.accept().await {
+    ///             println!("[{}] NEW CONNECTION", addr);
+    ///             conn.incoming(Service { addr });
+    ///         }
+    ///     }
+    /// }
     /// ```
-    pub fn incoming<State, Stream, Close>(
-        mut self,
-        state: State,
-        on_stream: fn(&mut Self, State, Request, Response) -> Stream,
-        on_close: fn(State) -> Close,
-    ) where
+    pub fn incoming(mut self, _s: impl Incoming) -> task::JoinHandle<()>
+    where
         IO: Send + 'static,
-        State: Clone + Send + 'static,
-        Stream: Future + Send + 'static,
-        Stream::Output: Send,
-        Close: Future + Send + 'static,
     {
         tokio::spawn(async move {
             while let Some(Ok((req, res))) = self.accept().await {
-                let state = state.clone();
-                tokio::spawn(on_stream(&mut self, state, req, res));
+                let state = _s.clone();
+                tokio::spawn(state.stream(req, res));
             }
-            on_close(state).await;
-        });
+            _s.close().await;
+        })
     }
 }
 

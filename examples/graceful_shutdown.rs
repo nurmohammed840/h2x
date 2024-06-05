@@ -7,11 +7,9 @@ use std::{fs, future::Future, io::Result, net::SocketAddr, pin::pin, task::Poll}
 #[tokio::main]
 async fn main() -> Result<()> {
     // std::env::set_var("SSLKEYLOGFILE", "./SSLKEYLOGFILE.log");
-    let cert = fs::read("examples/cert.pem")?;
-    let key = fs::read("examples/key.pem")?;
-    let server = Server::bind("127.0.0.1:4433", &mut &*cert, &mut &*key)
-        .await
-        .unwrap()
+    let conf = Server::config("examples/key.pem", "examples/cert.pem")?;
+    let server = Server::bind("127.0.0.1:4433", conf)
+        .await?
         .with_graceful_shutdown();
 
     println!("Goto: https://{}/", server.local_addr()?);
@@ -19,11 +17,7 @@ async fn main() -> Result<()> {
     let serve = async {
         loop {
             if let Ok((conn, addr)) = server.accept().await {
-                conn.incoming(
-                    addr,
-                    |_, addr, req, res| handler(addr, req, res),
-                    |addr| async move { println!("[{addr}] CONNECTION CLOSE") },
-                );
+                conn.incoming(Service { addr });
             }
         }
     };
@@ -45,6 +39,20 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+#[derive(Clone)]
+struct Service {
+    addr: SocketAddr,
+}
+
+impl Incoming for Service {
+    async fn stream(self, req: Request, res: Response) {
+        let _ = handler(self.addr, req, res).await;
+    }
+    async fn close(self) {
+        println!("[{}] CONNECTION CLOSE", self.addr);
+    }
+}
+
 async fn handler(addr: SocketAddr, req: Request, mut res: Response) -> h2x::Result<()> {
     println!("From: {addr} at {}", req.uri.path());
     res.headers
@@ -54,10 +62,7 @@ async fn handler(addr: SocketAddr, req: Request, mut res: Response) -> h2x::Resu
         .append("content-type", HeaderValue::from_static("text/html"));
 
     match (req.method.clone(), req.uri.path()) {
-        (Method::GET, "/") => {
-            res.write(fs::read_to_string("examples/index.html").unwrap())
-                .await
-        }
+        (Method::GET, "/") => res.write(fs::read("examples/index.html").unwrap()).await,
         (Method::GET, "/test") => {
             let body = format!("{req:#?}");
             res.headers

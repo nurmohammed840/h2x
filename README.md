@@ -27,42 +27,46 @@ You can run this example with: `cargo run --example hello_world`
 ```rust no_run
 use h2x::*;
 use http::{Method, StatusCode};
-use std::{error::Error, fs};
+use std::{io, net::SocketAddr};
+
+
+#[derive(Clone)]
+struct Service {
+    addr: SocketAddr,
+}
+
+impl Incoming for Service {
+    async fn stream(self, req: Request, mut res: Response) {
+        println!("From: {} at {}", self.addr, req.uri.path());
+        let _ = match (&req.method, req.uri.path()) {
+            (&Method::GET, "/") => res.write("<H1>Hello, World</H1>").await,
+            _ => {
+                res.status = StatusCode::NOT_FOUND;
+                res.write(format!("{req:#?}\n")).await
+            }
+        };
+    }
+
+    async fn close(self) {
+        println!("[{}] CONNECTION CLOSE", self.addr)
+    }
+}
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let cert = fs::read("examples/cert.pem")?;
-    let key = fs::read("examples/key.pem")?;
+async fn main() -> io::Result<()> {
+    let conf = Server::config("examples/key.pem", "examples/cert.pem")?;
+    let server = Server::bind("127.0.0.1:4433", conf).await?;
 
-    let server = Server::bind("127.0.0.1:4433", &mut &*cert, &mut &*key).await?;
     println!("Goto: https://{}", server.local_addr()?);
+
     loop {
         if let Ok((conn, addr)) = server.accept().await {
             println!("[{}] NEW CONNECTION", addr);
-            conn.incoming(
-                addr,
-                |_, addr, mut req, mut res| async move {
-                    println!("From: {addr} at {}", req.uri.path());
-
-                    match (&req.method, req.uri.path()) {
-                        (&Method::GET, "/") => res.write("<H1>Hello, World</H1>").await,
-                        _ => {
-                            // Echo
-                            res.status = StatusCode::NOT_FOUND;
-                            let mut stream = res.send_stream()?;
-                            stream.write(format!("{req:#?}\n")).await?;
-                            while let Some(bytes) = req.data().await {
-                                stream.write(bytes?).await?;
-                            }
-                            stream.end()
-                        }
-                    }
-                },
-                |addr| async move { println!("[{addr}] CONNECTION CLOSE") },
-            );
+            conn.incoming(Service { addr });
         }
     }
 }
+
 ```
 
 For more examples, see [./examples](https://github.com/nurmohammed840/h2x/tree/master/examples) directory.

@@ -1,6 +1,6 @@
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    net::TcpStream,
+    net::TcpStream, task,
 };
 use tokio_tls_listener::tokio_rustls::server::TlsStream;
 
@@ -78,34 +78,23 @@ where
     IO: Unpin + AsyncRead + AsyncWrite + Send + 'static,
 {
     /// See [`Conn::incoming`]
-    pub fn incoming<State, Stream, Close>(
-        mut self,
-        state: State,
-        on_stream: fn(&mut Self, State, Request, Response) -> Stream,
-        on_close: fn(State) -> Close,
-    ) where
-        State: Clone + Send + 'static,
-        Stream: Future + Send + 'static,
-        Stream::Output: Send,
-        Close: Future + Send + 'static,
-    {
+    pub fn incoming(mut self, _s: impl Incoming) -> task::JoinHandle<()> {
         tokio::spawn(async move {
             while let Some(Ok((req, res))) = self.inner.accept().await {
                 if self.is_closed.load(Ordering::Acquire) {
                     self.inner.graceful_shutdown();
                 } else {
                     let is_closed = Arc::clone(&self.is_closed);
-                    let state = state.clone();
-                    let future = on_stream(&mut self, state, req, res);
+                    let state = _s.clone();
                     tokio::spawn(async move {
-                        let _ = future.await;
+                        state.stream(req, res).await;
                         drop(is_closed);
                     });
                 }
             }
-            on_close(state).await;
+            _s.close().await;
             drop(self.is_closed);
-        });
+        })
     }
 }
 

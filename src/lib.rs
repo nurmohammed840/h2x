@@ -33,3 +33,15 @@ pub type Result<T, E = h2::Error> = std::result::Result<T, E>;
 fn io_err(error: impl Into<BoxErr>) -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::Other, error)
 }
+
+/// Serving incoming connections and handling streams using the provided callbacks.
+pub trait Incoming: Clone + Send + 'static {
+    /// Called for each stream within a connection and is responsible for processing the stream
+    fn stream(self, req: Request, res: Response) -> impl Future<Output = ()> + Send;
+
+    /// Called when disconnected
+    #[inline]
+    fn close(self) -> impl Future<Output = ()> + Send {
+        async {}
+    }
+}
