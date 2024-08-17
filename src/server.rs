@@ -2,7 +2,8 @@ use super::*;
 use std::{net::SocketAddr, ops, path::Path, sync::Arc};
 use tokio::{
     io::{self, AsyncRead, AsyncWrite},
-    net::{TcpStream, ToSocketAddrs}, task,
+    net::{TcpStream, ToSocketAddrs},
+    task,
 };
 use tokio_tls_listener::{rustls, tokio_rustls::server::TlsStream, TlsListener};
 
@@ -83,7 +84,10 @@ where
             event.map(|accept| {
                 accept.map(|(req, sender)| {
                     let (head, body) = req.into_parts();
-                    let request = Request { head, body };
+                    let request = Request {
+                        head,
+                        body: RecvStream { inner: body },
+                    };
                     let response = Response {
                         status: http::StatusCode::default(),
                         headers: http::HeaderMap::default(),
